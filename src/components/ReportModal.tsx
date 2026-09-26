@@ -58,7 +58,7 @@ export default function ReportModal({
         : selectedReason;
 
     try {
-      const res = await fetch("/api/admin/reports", {
+      const res = await fetch("/api/reports", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -70,9 +70,15 @@ export default function ReportModal({
         }),
       });
 
+      let data: any = null;
+      try {
+        data = await res.json();
+      } catch {
+        // Response wasn't valid JSON
+      }
+
       if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || "Failed to submit report");
+        throw new Error(data?.error || `Failed to submit report (Status: ${res.status})`);
       }
 
       setSubmitted(true);

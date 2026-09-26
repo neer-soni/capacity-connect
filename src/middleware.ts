@@ -66,6 +66,9 @@ export default auth((req) => {
   for (const [routePrefix, allowedRoles] of Object.entries(protectedRoutes)) {
     if (pathname.startsWith(routePrefix)) {
       if (!allowedRoles.includes(userRole)) {
+        if (pathname.startsWith("/api/")) {
+          return NextResponse.json({ error: "Forbidden: insufficient permissions" }, { status: 403 });
+        }
         // Wrong role → redirect to their own dashboard
         const redirectUrl =
           userRole === "admin"
