@@ -11,8 +11,10 @@ import {
   Loader2,
   Send,
   Award,
+  Flag,
 } from "lucide-react";
 import Link from "next/link";
+import ReportModal, { ReportTarget } from "@/components/ReportModal";
 
 interface Author {
   id: string;
@@ -68,6 +70,10 @@ export default function TrainerForumPage({ params }: { params: Promise<{ id: str
 
   // Track upvoted items
   const [votedIds, setVotedIds] = useState<Set<string>>(new Set());
+
+  // Moderation Report modal state
+  const [reportTarget, setReportTarget] = useState<ReportTarget | null>(null);
+  const [reportedIds, setReportedIds] = useState<Set<string>>(new Set());
 
   const fetchThreads = useCallback(async () => {
     try {
@@ -360,7 +366,7 @@ export default function TrainerForumPage({ params }: { params: Promise<{ id: str
                     <p style={{ fontSize: "0.875rem", color: "hsl(215 18% 38%)", lineHeight: 1.7, whiteSpace: "pre-wrap" }}>{thread.body}</p>
                   </div>
                 </div>
-                <div style={{ display: "flex", gap: 10, paddingTop: 10, borderTop: "1px solid hsl(214 20% 92%)" }}>
+                <div style={{ display: "flex", gap: 10, paddingTop: 10, borderTop: "1px solid hsl(214 20% 92%)", alignItems: "center" }}>
                   <button
                     className="btn btn-ghost btn-sm"
                     onClick={() => handleUpvoteThread(thread.id)}
@@ -369,9 +375,35 @@ export default function TrainerForumPage({ params }: { params: Promise<{ id: str
                   >
                     <ThumbsUp size={14} /> {thread.upvotes}
                   </button>
-                  <span style={{ fontSize: "0.78rem", color: "hsl(215 16% 57%)", alignSelf: "center" }}>
+                  <span style={{ fontSize: "0.78rem", color: "hsl(215 16% 57%)" }}>
                     {new Date(thread.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
                   </span>
+
+                  {/* Report Thread button */}
+                  <div style={{ marginLeft: "auto" }}>
+                    {reportedIds.has(thread.id) ? (
+                      <span style={{ fontSize: "0.75rem", color: "hsl(0 72% 51%)", display: "flex", alignItems: "center", gap: 4 }}>
+                        <Flag size={13} /> Reported
+                      </span>
+                    ) : (
+                      <button
+                        className="btn btn-ghost btn-sm"
+                        style={{ color: "hsl(215 16% 57%)", fontSize: "0.75rem", display: "flex", alignItems: "center", gap: 4 }}
+                        onClick={() =>
+                          setReportTarget({
+                            contentType: "forum_thread",
+                            contentId: thread.id,
+                            authorName: thread.author?.name || "Unknown",
+                            preview: thread.title,
+                            courseTitle: course?.title,
+                          })
+                        }
+                        title="Report this thread"
+                      >
+                        <Flag size={13} /> Report
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -409,7 +441,7 @@ export default function TrainerForumPage({ params }: { params: Promise<{ id: str
                       <p style={{ fontSize: "0.875rem", color: "hsl(215 18% 38%)", lineHeight: 1.7, whiteSpace: "pre-wrap" }}>
                         {reply.body}
                       </p>
-                      <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
                         <button
                           className="btn btn-ghost btn-sm"
                           onClick={() => handleUpvoteReply(thread.id, reply.id)}
@@ -429,6 +461,32 @@ export default function TrainerForumPage({ params }: { params: Promise<{ id: str
                             <Award size={13} /> Accept Answer
                           </button>
                         )}
+
+                        {/* Report Reply button */}
+                        <div style={{ marginLeft: "auto" }}>
+                          {reportedIds.has(reply.id) ? (
+                            <span style={{ fontSize: "0.75rem", color: "hsl(0 72% 51%)", display: "flex", alignItems: "center", gap: 4 }}>
+                              <Flag size={12} /> Reported
+                            </span>
+                          ) : (
+                            <button
+                              className="btn btn-ghost btn-sm"
+                              style={{ color: "hsl(215 16% 57%)", fontSize: "0.75rem", display: "flex", alignItems: "center", gap: 4 }}
+                              onClick={() =>
+                                setReportTarget({
+                                  contentType: "forum_reply",
+                                  contentId: reply.id,
+                                  authorName: reply.author?.name || "User",
+                                  preview: reply.body,
+                                  courseTitle: course?.title,
+                                })
+                              }
+                              title="Report this reply"
+                            >
+                              <Flag size={12} /> Report
+                            </button>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -469,6 +527,16 @@ export default function TrainerForumPage({ params }: { params: Promise<{ id: str
           )}
         </div>
       )}
+
+      {/* Report Modal */}
+      <ReportModal
+        isOpen={!!reportTarget}
+        onClose={() => setReportTarget(null)}
+        target={reportTarget}
+        onReportSubmitted={(contentId) => {
+          setReportedIds((prev) => new Set(prev).add(contentId));
+        }}
+      />
     </DashboardLayout>
   );
 }
