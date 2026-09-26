@@ -1,0 +1,268 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Users ───────────────────────────────────────────────────────
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         String   @default("trainee") // trainee | trainer | admin
+  status       String   @default("pending") // pending | approved | suspended
+  department   String   @default("")
+  designation  String   @default("")
+  skills       String   @default("[]") // JSON array of skill strings
+  avatar       String   @default("")
+  verified     Boolean  @default(false) // trainer verification
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations
+  courses      Course[]       @relation("TrainerCourses")
+  enrollments  Enrollment[]
+  attempts     Attempt[]
+  certificates Certificate[]
+  threads      ForumThread[]
+  replies      ForumReply[]
+  notifications Notification[]
+  reports      Report[]       @relation("ReportedByUser")
+  auditLogs    AuditLog[]
+  announcements Announcement[]
+  competencies CompetencyMap[]
+  resources    Resource[]
+}
+
+// ─── Courses ─────────────────────────────────────────────────────
+model Course {
+  id           String   @id @default(cuid())
+  title        String
+  description  String
+  trainerId    String
+  department   String   @default("")
+  tags         String   @default("[]") // JSON array
+  status       String   @default("draft") // draft | pending | published
+  duration     String   @default("")
+  level        String   @default("Beginner") // Beginner | Intermediate | Advanced
+  thumbnail    String   @default("📚")
+  totalLessons Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations
+  trainer      User         @relation("TrainerCourses", fields: [trainerId], references: [id])
+  enrollments  Enrollment[]
+  resources    Resource[]
+  assessments  Assessment[]
+  certificates Certificate[]
+  threads      ForumThread[]
+  feedback     Feedback[]
+}
+
+// ─── Enrollments ─────────────────────────────────────────────────
+model Enrollment {
+  id             String    @id @default(cuid())
+  userId         String
+  courseId       String
+  progress       Int       @default(0) // 0-100
+  watchedSeconds Int       @default(0) // total seconds watched across all video resources
+  status         String    @default("in_progress") // in_progress | completed
+  enrolledAt     DateTime  @default(now())
+  completedAt    DateTime?
+
+  user   User   @relation(fields: [userId], references: [id])
+  course Course @relation(fields: [courseId], references: [id])
+
+  @@unique([userId, courseId])
+}
+
+// ─── Resources ───────────────────────────────────────────────────
+model Resource {
+  id         String @id @default(cuid())
+  courseId   String
+  type       String // video | pdf | slide
+  title      String
+  url        String @default("")
+  storageKey String @default("") // storage object key (for deletion from cloud/local)
+  mimeType   String @default("application/octet-stream")
+  size       String @default("")
+  sizeBytes  Int    @default(0)
+  duration   String @default("")
+  uploadedBy String
+
+  course   Course @relation(fields: [courseId], references: [id])
+  uploader User   @relation(fields: [uploadedBy], references: [id])
+}
+
+// ─── Assessments / Quizzes ───────────────────────────────────────
+model Assessment {
+  id        String    @id @default(cuid())
+  courseId   String
+  title      String
+  deadline   DateTime?
+  timeLimit  Int       @default(30) // minutes
+  createdAt  DateTime  @default(now())
+
+  course    Course     @relation(fields: [courseId], references: [id])
+  questions Question[]
+  attempts  Attempt[]
+}
+
+model Question {
+  id              String @id @default(cuid())
+  assessmentId    String
+  text            String
+  correctOptionId String @default("")
+
+  assessment Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  options    Option[]
+}
+
+model Option {
+  id         String @id @default(cuid())
+  questionId String
+  text       String
+
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+}
+
+model Attempt {
+  id           String   @id @default(cuid())
+  assessmentId String
+  userId       String
+  score        Int      @default(0)
+  total        Int      @default(0)
+  answers      String   @default("{}") // JSON: { questionId: selectedOptionId }
+  submittedAt  DateTime @default(now())
+
+  assessment Assessment @relation(fields: [assessmentId], references: [id])
+  user       User       @relation(fields: [userId], references: [id])
+}
+
+// ─── Certificates ────────────────────────────────────────────────
+model Certificate {
+  id              String   @id @default(cuid())
+  userId          String
+  courseId         String
+  hash            String   @unique @default(cuid())
+  validatedByAdmin Boolean @default(false)
+  issuedAt        DateTime @default(now())
+
+  user   User   @relation(fields: [userId], references: [id])
+  course Course @relation(fields: [courseId], references: [id])
+}
+
+// ─── Forum ───────────────────────────────────────────────────────
+model ForumThread {
+  id              String   @id @default(cuid())
+  courseId         String
+  authorId         String
+  title            String
+  body             String
+  isQuestion       Boolean @default(false)
+  acceptedReplyId  String?
+  upvotes          Int     @default(0)
+  createdAt        DateTime @default(now())
+
+  course  Course       @relation(fields: [courseId], references: [id])
+  author  User         @relation(fields: [authorId], references: [id])
+  replies ForumReply[]
+}
+
+model ForumReply {
+  id            String   @id @default(cuid())
+  threadId      String
+  parentReplyId String?
+  authorId      String
+  body          String
+  upvotes       Int      @default(0)
+  isDeleted     Boolean  @default(false)
+  createdAt     DateTime @default(now())
+
+  thread ForumThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  author User       @relation(fields: [authorId], references: [id])
+}
+
+// ─── Feedback ────────────────────────────────────────────────────
+model Feedback {
+  id       String @id @default(cuid())
+  userId   String
+  courseId  String
+  rating   Int    @default(5)
+  comment  String @default("")
+  createdAt DateTime @default(now())
+
+  course Course @relation(fields: [courseId], references: [id])
+
+  @@unique([userId, courseId])
+}
+
+// ─── Notifications ───────────────────────────────────────────────
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  type      String   // quiz | reply | certificate | announcement
+  message   String
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+}
+
+// ─── Reports / Moderation ────────────────────────────────────────
+model Report {
+  id          String   @id @default(cuid())
+  contentType String   // forum_thread | forum_reply
+  contentId   String
+  reportedBy  String
+  reportedUser String  @default("")
+  reason      String
+  status      String   @default("pending") // pending | resolved | dismissed
+  resolvedAction String @default("")
+  courseContext String  @default("")
+  createdAt   DateTime @default(now())
+
+  reporter User @relation("ReportedByUser", fields: [reportedBy], references: [id])
+}
+
+// ─── Competency Map ──────────────────────────────────────────────
+model CompetencyMap {
+  id             String  @id @default(cuid())
+  trainerId      String
+  skillTag       String
+  verifiedByAdmin Boolean @default(false)
+
+  trainer User @relation(fields: [trainerId], references: [id])
+
+  @@unique([trainerId, skillTag])
+}
+
+// ─── Audit Log ───────────────────────────────────────────────────
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String
+  action    String   // approved_user | rejected_user | published_course | etc.
+  target    String   @default("") // target entity id
+  details   String   @default("")
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+}
+
+// ─── Announcements (Homepage) ────────────────────────────────────
+model Announcement {
+  id          String   @id @default(cuid())
+  title       String
+  body        String
+  type        String   @default("announcement") // announcement | achievement | notification
+  icon        String   @default("📢")
+  publishedBy String
+  createdAt   DateTime @default(now())
+
+  publisher User @relation(fields: [publishedBy], references: [id])
+}
