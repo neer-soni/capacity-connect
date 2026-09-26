@@ -3,15 +3,27 @@ import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import EditProfileModal from "@/components/profile/EditProfileModal";
-import { mockUsers, mockTrainerStats, mockCourses } from "@/lib/mock-data";
-import { Star, Users, BookOpen, Award, CheckCircle, Edit, Mail, Building, Briefcase } from "lucide-react";
+import { Star, Users, BookOpen, Award, Edit, Mail, Loader2 } from "lucide-react";
+
+interface TrainerStats {
+  totalStudents: number;
+  avgRating: number;
+  totalCourses: number;
+  certificatesIssued: number;
+}
 
 export default function TrainerProfilePage() {
   const { data: session } = useSession();
-  const [profile, setProfile] = useState<any>(mockUsers.trainer);
+  const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [courses, setCourses] = useState<any[]>([]);
+  const [stats, setStats] = useState<TrainerStats>({
+    totalStudents: 0,
+    avgRating: 0,
+    totalCourses: 0,
+    certificatesIssued: 0,
+  });
 
   useEffect(() => {
     // Fetch profile
@@ -27,14 +39,17 @@ export default function TrainerProfilePage() {
         setLoading(false);
       })
       .catch(() => {
+        // Use session data as fallback (no mock)
         if (session?.user) {
-          setProfile((prev: any) => ({
-            ...prev,
-            name: session.user.name || prev.name,
-            email: session.user.email || prev.email,
-            department: (session.user as any).department || prev.department,
-            avatar: (session.user as any).avatar || prev.avatar,
-          }));
+          setProfile({
+            name: session.user.name || "Trainer",
+            email: session.user.email || "",
+            department: (session.user as any).department || "",
+            designation: (session.user as any).designation || "",
+            avatar: (session.user as any).avatar || "",
+            skills: [],
+            role: "trainer",
+          });
         }
         setLoading(false);
       });
@@ -45,14 +60,35 @@ export default function TrainerProfilePage() {
       .then((data) => {
         if (Array.isArray(data)) {
           setCourses(data);
-        } else {
-          setCourses(mockCourses.slice(0, 3));
         }
       })
-      .catch(() => {
-        setCourses(mockCourses.slice(0, 3));
-      });
+      .catch(() => {});
+
+    // Fetch trainer stats
+    fetch("/api/trainer/stats")
+      .then((r) => r.json())
+      .then((data) => {
+        if (data && !data.error) {
+          setStats({
+            totalStudents: data.totalStudents || 0,
+            avgRating: data.avgRating || 0,
+            totalCourses: data.totalCourses || 0,
+            certificatesIssued: data.certificatesIssued || 0,
+          });
+        }
+      })
+      .catch(() => {});
   }, [session]);
+
+  if (loading || !profile) {
+    return (
+      <DashboardLayout>
+        <div style={{ display: "flex", justifyContent: "center", padding: 80 }}>
+          <Loader2 size={32} className="spinner" style={{ color: "hsl(215 84% 52%)" }} />
+        </div>
+      </DashboardLayout>
+    );
+  }
 
   return (
     <DashboardLayout>
@@ -102,10 +138,10 @@ export default function TrainerProfilePage() {
             }}
           >
             {[
-              { label: "Students Taught", value: mockTrainerStats.totalStudents, icon: <Users size={16} /> },
-              { label: "Avg Rating", value: mockTrainerStats.avgRating, icon: <Star size={16} fill="hsl(38 80% 40%)" /> },
-              { label: "Active Courses", value: courses.length || 3, icon: <BookOpen size={16} /> },
-              { label: "Certificates Issued", value: mockTrainerStats.certificatesIssued, icon: <Award size={16} /> },
+              { label: "Students Taught", value: stats.totalStudents, icon: <Users size={16} /> },
+              { label: "Avg Rating", value: stats.avgRating || "—", icon: <Star size={16} fill="hsl(38 80% 40%)" /> },
+              { label: "Active Courses", value: courses.length, icon: <BookOpen size={16} /> },
+              { label: "Certificates Issued", value: stats.certificatesIssued, icon: <Award size={16} /> },
             ].map((s) => (
               <div key={s.label} style={{ textAlign: "center" }}>
                 <div style={{ fontSize: "1.5rem", fontWeight: 800, color: "hsl(215 84% 30%)", marginBottom: 2 }}>
@@ -143,11 +179,17 @@ export default function TrainerProfilePage() {
             </button>
           </div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            {(profile.skills && profile.skills.length > 0 ? profile.skills : mockUsers.trainer.skills).map((s: string) => (
-              <span key={s} className="skill-pill" style={{ fontSize: "0.85rem", padding: "6px 14px" }}>
-                {s}
+            {profile.skills && profile.skills.length > 0 ? (
+              profile.skills.map((s: string) => (
+                <span key={s} className="skill-pill" style={{ fontSize: "0.85rem", padding: "6px 14px" }}>
+                  {s}
+                </span>
+              ))
+            ) : (
+              <span style={{ fontSize: "0.85rem", color: "hsl(215 16% 57%)", fontStyle: "italic" }}>
+                No skills added yet — click Manage to add your expertise.
               </span>
-            ))}
+            )}
           </div>
         </div>
 
@@ -161,34 +203,40 @@ export default function TrainerProfilePage() {
               {courses.length} course{courses.length !== 1 ? "s" : ""}
             </span>
           </div>
-          {courses.map((c: any) => (
-            <div
-              key={c.id}
-              style={{
-                display: "flex",
-                gap: 14,
-                alignItems: "center",
-                padding: "14px 16px",
-                background: "hsl(210 20% 98%)",
-                borderRadius: 10,
-                border: "1px solid hsl(214 20% 90%)",
-                marginBottom: 10,
-              }}
-            >
-              <div style={{ fontSize: "1.8rem" }}>{c.thumbnail || "📘"}</div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 700, fontSize: "0.92rem", color: "hsl(215 30% 12%)" }}>
-                  {c.title}
-                </div>
-                <div style={{ fontSize: "0.78rem", color: "hsl(215 16% 57%)", marginTop: 2 }}>
-                  {c.department} · {c.enrolledCount || 0} enrolled · Rating: {c.rating || "5.0"} ★
-                </div>
-              </div>
-              <span className="badge badge-success" style={{ fontSize: "0.7rem" }}>
-                Published
-              </span>
+          {courses.length === 0 ? (
+            <div style={{ padding: 24, textAlign: "center", color: "hsl(215 16% 57%)", fontSize: "0.85rem" }}>
+              No courses published yet.
             </div>
-          ))}
+          ) : (
+            courses.map((c: any) => (
+              <div
+                key={c.id}
+                style={{
+                  display: "flex",
+                  gap: 14,
+                  alignItems: "center",
+                  padding: "14px 16px",
+                  background: "hsl(210 20% 98%)",
+                  borderRadius: 10,
+                  border: "1px solid hsl(214 20% 90%)",
+                  marginBottom: 10,
+                }}
+              >
+                <div style={{ fontSize: "1.8rem" }}>{c.thumbnail || "📘"}</div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 700, fontSize: "0.92rem", color: "hsl(215 30% 12%)" }}>
+                    {c.title}
+                  </div>
+                  <div style={{ fontSize: "0.78rem", color: "hsl(215 16% 57%)", marginTop: 2 }}>
+                    {c.department} · {c.enrolledCount || c._count?.enrollments || 0} enrolled
+                  </div>
+                </div>
+                <span className="badge badge-success" style={{ fontSize: "0.7rem" }}>
+                  Published
+                </span>
+              </div>
+            ))
+          )}
         </div>
       </div>
 

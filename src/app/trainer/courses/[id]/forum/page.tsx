@@ -10,7 +10,7 @@ import {
   Plus,
   Loader2,
   Send,
-  AlertCircle,
+  Award,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -47,7 +47,7 @@ interface Thread {
   replies: Reply[];
 }
 
-export default function ForumPage({ params }: { params: Promise<{ id: string }> }) {
+export default function TrainerForumPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const { data: session } = useSession();
   const [course, setCourse] = useState<any>(null);
@@ -66,7 +66,7 @@ export default function ForumPage({ params }: { params: Promise<{ id: string }> 
   const [newReply, setNewReply] = useState("");
   const [submittingReply, setSubmittingReply] = useState(false);
 
-  // Track which items the user already upvoted this session (prevent spamming)
+  // Track upvoted items
   const [votedIds, setVotedIds] = useState<Set<string>>(new Set());
 
   const fetchThreads = useCallback(async () => {
@@ -75,7 +75,6 @@ export default function ForumPage({ params }: { params: Promise<{ id: string }> 
       const data = await res.json();
       if (Array.isArray(data)) {
         setThreads(data);
-        // Keep selection if it still exists, otherwise select first
         setSelectedThread((prev) => {
           if (prev && data.some((t: Thread) => t.id === prev)) return prev;
           return data[0]?.id || null;
@@ -89,13 +88,11 @@ export default function ForumPage({ params }: { params: Promise<{ id: string }> 
   }, [id]);
 
   useEffect(() => {
-    // Load course info
     fetch(`/api/courses/${id}`)
       .then((r) => r.json())
       .then((data) => setCourse(data))
       .catch(() => {});
 
-    // Load forum threads
     fetchThreads();
   }, [id, fetchThreads]);
 
@@ -104,7 +101,6 @@ export default function ForumPage({ params }: { params: Promise<{ id: string }> 
   // ── Create Thread ────────────────────────────────────────────────
   const handleCreateThread = async () => {
     if (!newThreadTitle.trim() || !newThreadBody.trim()) return;
-
     setSubmittingThread(true);
     try {
       const res = await fetch(`/api/courses/${id}/forum`, {
@@ -116,14 +112,11 @@ export default function ForumPage({ params }: { params: Promise<{ id: string }> 
           isQuestion: newThreadIsQuestion,
         }),
       });
-
       if (!res.ok) {
         const err = await res.json();
         alert(err.error || "Failed to create thread");
         return;
       }
-
-      // Reset form and reload threads
       setNewThreadTitle("");
       setNewThreadBody("");
       setNewThreadIsQuestion(false);
@@ -139,7 +132,6 @@ export default function ForumPage({ params }: { params: Promise<{ id: string }> 
   // ── Post Reply ───────────────────────────────────────────────────
   const handlePostReply = async () => {
     if (!newReply.trim() || !thread) return;
-
     setSubmittingReply(true);
     try {
       const res = await fetch(`/api/forum/${thread.id}/reply`, {
@@ -147,13 +139,11 @@ export default function ForumPage({ params }: { params: Promise<{ id: string }> 
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ body: newReply.trim() }),
       });
-
       if (!res.ok) {
         const err = await res.json();
         alert(err.error || "Failed to post reply");
         return;
       }
-
       setNewReply("");
       await fetchThreads();
     } catch {
@@ -166,13 +156,10 @@ export default function ForumPage({ params }: { params: Promise<{ id: string }> 
   // ── Upvote ───────────────────────────────────────────────────────
   const handleUpvoteThread = async (threadId: string) => {
     if (votedIds.has(`thread-${threadId}`)) return;
-
-    // Optimistic update
     setThreads((prev) =>
       prev.map((t) => (t.id === threadId ? { ...t, upvotes: t.upvotes + 1 } : t))
     );
     setVotedIds((prev) => new Set(prev).add(`thread-${threadId}`));
-
     try {
       await fetch(`/api/forum/${threadId}/reply`, {
         method: "PATCH",
@@ -180,36 +167,23 @@ export default function ForumPage({ params }: { params: Promise<{ id: string }> 
         body: JSON.stringify({ threadUpvote: true }),
       });
     } catch {
-      // Revert on failure
       setThreads((prev) =>
         prev.map((t) => (t.id === threadId ? { ...t, upvotes: t.upvotes - 1 } : t))
       );
-      setVotedIds((prev) => {
-        const next = new Set(prev);
-        next.delete(`thread-${threadId}`);
-        return next;
-      });
+      setVotedIds((prev) => { const n = new Set(prev); n.delete(`thread-${threadId}`); return n; });
     }
   };
 
   const handleUpvoteReply = async (threadId: string, replyId: string) => {
     if (votedIds.has(`reply-${replyId}`)) return;
-
-    // Optimistic update
     setThreads((prev) =>
       prev.map((t) =>
         t.id === threadId
-          ? {
-              ...t,
-              replies: t.replies.map((r) =>
-                r.id === replyId ? { ...r, upvotes: r.upvotes + 1 } : r
-              ),
-            }
+          ? { ...t, replies: t.replies.map((r) => (r.id === replyId ? { ...r, upvotes: r.upvotes + 1 } : r)) }
           : t
       )
     );
     setVotedIds((prev) => new Set(prev).add(`reply-${replyId}`));
-
     try {
       await fetch(`/api/forum/${threadId}/reply`, {
         method: "PATCH",
@@ -217,28 +191,37 @@ export default function ForumPage({ params }: { params: Promise<{ id: string }> 
         body: JSON.stringify({ replyId }),
       });
     } catch {
-      // Revert on failure
       setThreads((prev) =>
         prev.map((t) =>
           t.id === threadId
-            ? {
-                ...t,
-                replies: t.replies.map((r) =>
-                  r.id === replyId ? { ...r, upvotes: r.upvotes - 1 } : r
-                ),
-              }
+            ? { ...t, replies: t.replies.map((r) => (r.id === replyId ? { ...r, upvotes: r.upvotes - 1 } : r)) }
             : t
         )
       );
-      setVotedIds((prev) => {
-        const next = new Set(prev);
-        next.delete(`reply-${replyId}`);
-        return next;
-      });
+      setVotedIds((prev) => { const n = new Set(prev); n.delete(`reply-${replyId}`); return n; });
     }
   };
 
-  // ── Helper: avatar initials ──────────────────────────────────────
+  // ── Accept Answer (Trainer only for Q&A threads) ─────────────────
+  const handleAcceptAnswer = async (threadId: string, replyId: string) => {
+    try {
+      const res = await fetch(`/api/courses/${id}/forum`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ threadId, acceptedReplyId: replyId }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        alert(err.error || "Failed to accept answer");
+        return;
+      }
+      await fetchThreads();
+    } catch {
+      alert("Network error");
+    }
+  };
+
+  // Helper: avatar initials
   const getInitials = (author: Author | undefined) => {
     if (!author) return "U";
     if (author.avatar) return author.avatar;
@@ -254,12 +237,12 @@ export default function ForumPage({ params }: { params: Promise<{ id: string }> 
     <DashboardLayout>
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 24 }}>
-        <Link href={`/trainee/courses/${id}/learn`} className="btn btn-ghost btn-sm">
+        <Link href={`/trainer/courses/${id}`} className="btn btn-ghost btn-sm">
           <ArrowLeft size={16} />
         </Link>
         <div style={{ flex: 1 }}>
           <h1 style={{ fontSize: "1.2rem", fontWeight: 800 }}>Course Forum</h1>
-          <p style={{ fontSize: "0.8rem", color: "hsl(215 16% 57%)" }}>{course?.title}</p>
+          <p style={{ fontSize: "0.8rem", color: "hsl(215 16% 57%)" }}>{course?.title} — Trainer View</p>
         </div>
         <button
           onClick={() => setShowNewThread(!showNewThread)}
@@ -282,7 +265,7 @@ export default function ForumPage({ params }: { params: Promise<{ id: string }> 
           />
           <textarea
             className="input"
-            placeholder="What would you like to discuss or ask?"
+            placeholder="What would you like to discuss?"
             rows={3}
             value={newThreadBody}
             onChange={(e) => setNewThreadBody(e.target.value)}
@@ -295,7 +278,7 @@ export default function ForumPage({ params }: { params: Promise<{ id: string }> 
                 checked={newThreadIsQuestion}
                 onChange={(e) => setNewThreadIsQuestion(e.target.checked)}
               />
-              Mark as Question (enables accepted answer)
+              Mark as Question
             </label>
             <button
               className="btn btn-primary btn-sm"
@@ -310,7 +293,6 @@ export default function ForumPage({ params }: { params: Promise<{ id: string }> 
         </div>
       )}
 
-      {/* Loading */}
       {loading ? (
         <div style={{ display: "flex", justifyContent: "center", padding: 60 }}>
           <Loader2 size={32} className="spinner" style={{ color: "hsl(215 84% 52%)" }} />
@@ -325,16 +307,13 @@ export default function ForumPage({ params }: { params: Promise<{ id: string }> 
             {threads.length === 0 ? (
               <div className="empty-state" style={{ padding: "24px 12px" }}>
                 <MessageSquare size={28} style={{ opacity: 0.4, marginBottom: 8 }} />
-                <p style={{ fontSize: "0.82rem" }}>No threads yet. Be the first!</p>
+                <p style={{ fontSize: "0.82rem" }}>No threads yet.</p>
               </div>
             ) : (
               threads.map((t) => (
                 <button
                   key={t.id}
-                  onClick={() => {
-                    setSelectedThread(t.id);
-                    setNewReply("");
-                  }}
+                  onClick={() => { setSelectedThread(t.id); setNewReply(""); }}
                   style={{
                     width: "100%",
                     textAlign: "left",
@@ -386,18 +365,12 @@ export default function ForumPage({ params }: { params: Promise<{ id: string }> 
                     className="btn btn-ghost btn-sm"
                     onClick={() => handleUpvoteThread(thread.id)}
                     disabled={votedIds.has(`thread-${thread.id}`)}
-                    style={{
-                      color: votedIds.has(`thread-${thread.id}`) ? "hsl(215 84% 52%)" : undefined,
-                    }}
+                    style={{ color: votedIds.has(`thread-${thread.id}`) ? "hsl(215 84% 52%)" : undefined }}
                   >
                     <ThumbsUp size={14} /> {thread.upvotes}
                   </button>
                   <span style={{ fontSize: "0.78rem", color: "hsl(215 16% 57%)", alignSelf: "center" }}>
-                    {new Date(thread.createdAt).toLocaleDateString("en-IN", {
-                      day: "numeric",
-                      month: "short",
-                      year: "numeric",
-                    })}
+                    {new Date(thread.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
                   </span>
                 </div>
               </div>
@@ -425,34 +398,38 @@ export default function ForumPage({ params }: { params: Promise<{ id: string }> 
                     </div>
                     <div style={{ flex: 1 }}>
                       <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}>
-                        <span style={{ fontWeight: 600, fontSize: "0.875rem" }}>
-                          {reply.author?.name || "User"}
-                        </span>
+                        <span style={{ fontWeight: 600, fontSize: "0.875rem" }}>{reply.author?.name || "User"}</span>
                         {reply.author?.role === "trainer" && (
                           <span className="badge badge-secondary" style={{ fontSize: "0.68rem" }}>✓ Trainer</span>
                         )}
                         <span style={{ fontSize: "0.75rem", color: "hsl(215 16% 57%)" }}>
-                          {new Date(reply.createdAt).toLocaleDateString("en-IN", {
-                            day: "numeric",
-                            month: "short",
-                            year: "numeric",
-                          })}
+                          {new Date(reply.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
                         </span>
                       </div>
                       <p style={{ fontSize: "0.875rem", color: "hsl(215 18% 38%)", lineHeight: 1.7, whiteSpace: "pre-wrap" }}>
                         {reply.body}
                       </p>
-                      <button
-                        className="btn btn-ghost btn-sm"
-                        style={{
-                          marginTop: 8,
-                          color: votedIds.has(`reply-${reply.id}`) ? "hsl(215 84% 52%)" : undefined,
-                        }}
-                        onClick={() => handleUpvoteReply(thread.id, reply.id)}
-                        disabled={votedIds.has(`reply-${reply.id}`)}
-                      >
-                        <ThumbsUp size={13} /> {reply.upvotes}
-                      </button>
+                      <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          onClick={() => handleUpvoteReply(thread.id, reply.id)}
+                          disabled={votedIds.has(`reply-${reply.id}`)}
+                          style={{ color: votedIds.has(`reply-${reply.id}`) ? "hsl(215 84% 52%)" : undefined }}
+                        >
+                          <ThumbsUp size={13} /> {reply.upvotes}
+                        </button>
+                        {/* Accept answer button — only for Q&A threads, only for the course trainer */}
+                        {thread.isQuestion && reply.id !== thread.acceptedReplyId && (
+                          <button
+                            className="btn btn-ghost btn-sm"
+                            style={{ color: "hsl(145 63% 35%)" }}
+                            onClick={() => handleAcceptAnswer(thread.id, reply.id)}
+                            title="Mark as accepted answer"
+                          >
+                            <Award size={13} /> Accept Answer
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -463,7 +440,7 @@ export default function ForumPage({ params }: { params: Promise<{ id: string }> 
                 <h4 style={{ fontSize: "0.85rem", fontWeight: 700, marginBottom: 10 }}>Add a Reply</h4>
                 <textarea
                   className="input"
-                  placeholder="Share your thoughts or answer..."
+                  placeholder="Reply as trainer..."
                   rows={3}
                   value={newReply}
                   onChange={(e) => setNewReply(e.target.value)}
@@ -487,7 +464,7 @@ export default function ForumPage({ params }: { params: Promise<{ id: string }> 
           ) : (
             <div className="empty-state" style={{ border: "1px solid hsl(214 20% 90%)", borderRadius: 12 }}>
               <MessageSquare size={40} style={{ opacity: 0.3, marginBottom: 10 }} />
-              <p>{threads.length === 0 ? "Start a discussion using the \"New Thread\" button above" : "Select a thread to read"}</p>
+              <p>{threads.length === 0 ? "No forum threads yet for this course" : "Select a thread to read"}</p>
             </div>
           )}
         </div>

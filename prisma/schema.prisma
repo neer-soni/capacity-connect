@@ -3,8 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 // ─── Users ───────────────────────────────────────────────────────
@@ -36,6 +37,8 @@ model User {
   announcements Announcement[]
   competencies CompetencyMap[]
   resources    Resource[]
+  liveSessions LiveSession[]  @relation("TrainerLiveSessions")
+  liveAttendances LiveSessionAttendance[]
 }
 
 // ─── Courses ─────────────────────────────────────────────────────
@@ -62,6 +65,7 @@ model Course {
   certificates Certificate[]
   threads      ForumThread[]
   feedback     Feedback[]
+  liveSessions LiveSession[]
 }
 
 // ─── Enrollments ─────────────────────────────────────────────────
@@ -265,4 +269,41 @@ model Announcement {
   createdAt   DateTime @default(now())
 
   publisher User @relation(fields: [publishedBy], references: [id])
+}
+
+// ─── Live Classroom Sessions ─────────────────────────────────────
+model LiveSession {
+  id           String    @id @default(cuid())
+  courseId     String
+  trainerId    String
+  title        String
+  description  String    @default("")
+  scheduledAt  DateTime
+  duration     Int       @default(60) // planned duration in minutes
+  startedAt    DateTime?
+  endedAt      DateTime?
+  status       String    @default("scheduled") // scheduled | live | ended | cancelled
+  roomId       String    @unique // unique room identifier for LiveKit
+  recordingUrl String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  course      Course                  @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  trainer     User                    @relation("TrainerLiveSessions", fields: [trainerId], references: [id])
+  attendances LiveSessionAttendance[]
+}
+
+// ─── Live Session Attendance ─────────────────────────────────────
+model LiveSessionAttendance {
+  id              String    @id @default(cuid())
+  sessionId       String
+  userId          String
+  joinedAt        DateTime  @default(now())
+  leftAt          DateTime?
+  durationSeconds Int       @default(0)
+
+  session LiveSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user    User        @relation(fields: [userId], references: [id])
+
+  @@unique([sessionId, userId])
 }

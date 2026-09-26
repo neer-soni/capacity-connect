@@ -3,17 +3,43 @@ import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import EditProfileModal from "@/components/profile/EditProfileModal";
-import { mockUsers, mockCourses, mockEnrollments, mockCertificates, mockSkillGaps } from "@/lib/mock-data";
 import Link from "next/link";
-import { Edit, Award, BookOpen, TrendingUp, CheckCircle, XCircle, ExternalLink, Mail, Building, Briefcase } from "lucide-react";
+import { Edit, Award, BookOpen, TrendingUp, CheckCircle, XCircle, ExternalLink, Mail, Loader2 } from "lucide-react";
+
+interface EnrollmentData {
+  id: string;
+  courseId: string;
+  progress: number;
+  status: string;
+  course: {
+    id: string;
+    title: string;
+    trainer: string;
+    thumbnail: string;
+    department: string;
+  };
+}
+
+interface CertificateData {
+  id: string;
+  hash: string;
+  issuedAt: string;
+  course: {
+    title: string;
+    department: string;
+  };
+}
 
 export default function TraineeProfilePage() {
   const { data: session } = useSession();
-  const [profile, setProfile] = useState<any>(mockUsers.trainee);
+  const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [enrollments, setEnrollments] = useState<EnrollmentData[]>([]);
+  const [certificates, setCertificates] = useState<CertificateData[]>([]);
 
   useEffect(() => {
+    // Fetch profile
     fetch("/api/profile")
       .then((r) => {
         if (!r.ok) throw new Error("Not loaded");
@@ -26,24 +52,54 @@ export default function TraineeProfilePage() {
         setLoading(false);
       })
       .catch(() => {
-        // Fallback to session or mock
         if (session?.user) {
-          setProfile((prev: any) => ({
-            ...prev,
-            name: session.user.name || prev.name,
-            email: session.user.email || prev.email,
-            department: (session.user as any).department || prev.department,
-            avatar: (session.user as any).avatar || prev.avatar,
-          }));
+          setProfile({
+            name: session.user.name || "Trainee",
+            email: session.user.email || "",
+            department: (session.user as any).department || "",
+            designation: (session.user as any).designation || "",
+            avatar: (session.user as any).avatar || "",
+            skills: [],
+            role: "trainee",
+          });
         }
         setLoading(false);
       });
+
+    // Fetch enrollments
+    fetch("/api/trainee/enrollments")
+      .then((r) => r.json())
+      .then((data) => {
+        if (Array.isArray(data)) setEnrollments(data);
+      })
+      .catch(() => {});
+
+    // Fetch certificates
+    fetch("/api/trainee/certificates")
+      .then((r) => r.json())
+      .then((data) => {
+        if (Array.isArray(data)) setCertificates(data);
+      })
+      .catch(() => {});
   }, [session]);
 
-  const completedCourses = mockEnrollments
+  const completedCourses = enrollments
     .filter((e) => e.status === "completed")
-    .map((e) => mockCourses.find((c) => c.id === e.courseId)!)
+    .map((e) => e.course)
     .filter(Boolean);
+
+  // Build skill gap from profile skills vs enrolled course topics
+  const userSkills = (profile?.skills || []).map((s: string) => s.toLowerCase());
+
+  if (loading || !profile) {
+    return (
+      <DashboardLayout>
+        <div style={{ display: "flex", justifyContent: "center", padding: 80 }}>
+          <Loader2 size={32} className="spinner" style={{ color: "hsl(215 84% 52%)" }} />
+        </div>
+      </DashboardLayout>
+    );
+  }
 
   return (
     <DashboardLayout>
@@ -108,10 +164,10 @@ export default function TraineeProfilePage() {
               Learning Progress Stats
             </h3>
             {[
-              { label: "Courses Enrolled", value: mockEnrollments.length },
+              { label: "Courses Enrolled", value: enrollments.length },
               { label: "Courses Completed", value: completedCourses.length },
-              { label: "Certificates Earned", value: mockCertificates.length },
-              { label: "Skills Verified", value: (profile.skills || []).length || 4 },
+              { label: "Certificates Earned", value: certificates.length },
+              { label: "Skills Listed", value: (profile.skills || []).length },
             ].map((s) => (
               <div
                 key={s.label}
@@ -151,67 +207,24 @@ export default function TraineeProfilePage() {
               </button>
             </div>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              {(profile.skills && profile.skills.length > 0 ? profile.skills : mockUsers.trainee.skills).map((s: string) => (
-                <span key={s} className="skill-pill">
-                  {s}
+              {profile.skills && profile.skills.length > 0 ? (
+                profile.skills.map((s: string) => (
+                  <span key={s} className="skill-pill">
+                    {s}
+                  </span>
+                ))
+              ) : (
+                <span style={{ fontSize: "0.85rem", color: "hsl(215 16% 57%)", fontStyle: "italic" }}>
+                  No skills added yet — click + Add to list your competencies.
                 </span>
-              ))}
+              )}
             </div>
           </div>
         </div>
 
-        {/* Right: Portfolio & Skill Gap */}
+        {/* Right: Portfolio & Certificates */}
         <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-          {/* Skill Gap Tracker */}
-          <div className="card" style={{ padding: "24px" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 18 }}>
-              <TrendingUp size={18} style={{ color: "hsl(215 84% 30%)" }} />
-              <h2 style={{ fontSize: "1.05rem", fontWeight: 800 }}>Skill Gap Tracker</h2>
-              <span className="badge badge-error" style={{ fontSize: "0.7rem", marginLeft: "auto" }}>
-                {mockSkillGaps.filter((s) => !s.hasIt && s.required).length} Required Gaps
-              </span>
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {mockSkillGaps.map((s) => (
-                <div
-                  key={s.skill}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 12,
-                    padding: "8px 10px",
-                    borderRadius: 8,
-                    background: s.hasIt ? "hsl(145 63% 97%)" : "transparent",
-                  }}
-                >
-                  {s.hasIt ? (
-                    <CheckCircle size={18} style={{ color: "hsl(145 63% 40%)", flexShrink: 0 }} />
-                  ) : (
-                    <XCircle size={18} style={{ color: s.required ? "hsl(0 72% 51%)" : "hsl(215 16% 65%)", flexShrink: 0 }} />
-                  )}
-                  <span style={{ flex: 1, fontSize: "0.875rem", fontWeight: s.required ? 600 : 400 }}>
-                    {s.skill}
-                    {s.required && (
-                      <span className="badge badge-error" style={{ marginLeft: 6, fontSize: "0.65rem" }}>
-                        Required
-                      </span>
-                    )}
-                  </span>
-                  {!s.hasIt && s.courses.length > 0 && (
-                    <Link
-                      href={`/courses/${s.courses[0]}`}
-                      className="btn btn-sm btn-outline"
-                      style={{ fontSize: "0.72rem" }}
-                    >
-                      Suggested Course →
-                    </Link>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Portfolio: Completed */}
+          {/* Learning Portfolio: Completed courses */}
           <div className="card" style={{ padding: "24px" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 18 }}>
               <BookOpen size={18} style={{ color: "hsl(215 84% 30%)" }} />
@@ -236,7 +249,7 @@ export default function TraineeProfilePage() {
                       border: "1px solid hsl(145 63% 88%)",
                     }}
                   >
-                    <div style={{ fontSize: "1.6rem" }}>{c.thumbnail}</div>
+                    <div style={{ fontSize: "1.6rem" }}>{c.thumbnail || "📘"}</div>
                     <div style={{ flex: 1 }}>
                       <div style={{ fontSize: "0.875rem", fontWeight: 700 }}>{c.title}</div>
                       <div style={{ fontSize: "0.78rem", color: "hsl(215 16% 57%)" }}>
@@ -259,41 +272,47 @@ export default function TraineeProfilePage() {
                 View All →
               </Link>
             </div>
-            {mockCertificates.map((cert) => (
-              <div
-                key={cert.id}
-                style={{
-                  display: "flex",
-                  gap: 12,
-                  alignItems: "center",
-                  padding: "14px 16px",
-                  background: "hsl(38 95% 96%)",
-                  borderRadius: 10,
-                  border: "1px solid hsl(38 95% 88%)",
-                  marginBottom: 10,
-                }}
-              >
-                <div style={{ fontSize: "1.8rem" }}>🏆</div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: "0.875rem", fontWeight: 700 }}>{cert.courseTitle}</div>
-                  <div style={{ fontSize: "0.78rem", color: "hsl(215 16% 57%)" }}>
-                    Issued: {new Date(cert.issuedAt).toLocaleDateString("en-IN")} · ID: {cert.hash}
+            {certificates.length === 0 ? (
+              <div className="empty-state" style={{ padding: "24px" }}>
+                <p style={{ fontSize: "0.85rem" }}>No certificates earned yet. Complete a course to get certified!</p>
+              </div>
+            ) : (
+              certificates.map((cert) => (
+                <div
+                  key={cert.id}
+                  style={{
+                    display: "flex",
+                    gap: 12,
+                    alignItems: "center",
+                    padding: "14px 16px",
+                    background: "hsl(38 95% 96%)",
+                    borderRadius: 10,
+                    border: "1px solid hsl(38 95% 88%)",
+                    marginBottom: 10,
+                  }}
+                >
+                  <div style={{ fontSize: "1.8rem" }}>🏆</div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: "0.875rem", fontWeight: 700 }}>{cert.course?.title || "Course"}</div>
+                    <div style={{ fontSize: "0.78rem", color: "hsl(215 16% 57%)" }}>
+                      Issued: {new Date(cert.issuedAt).toLocaleDateString("en-IN")} · ID: {cert.hash?.slice(0, 12) || "—"}
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-end" }}>
+                    <span className="badge badge-success" style={{ fontSize: "0.68rem" }}>
+                      ✓ Validated
+                    </span>
+                    <Link
+                      href="/trainee/certificates"
+                      className="btn btn-sm btn-outline"
+                      style={{ fontSize: "0.72rem" }}
+                    >
+                      <ExternalLink size={12} /> View
+                    </Link>
                   </div>
                 </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-end" }}>
-                  <span className="badge badge-success" style={{ fontSize: "0.68rem" }}>
-                    ✓ Admin Validated
-                  </span>
-                  <Link
-                    href="/trainee/certificates"
-                    className="btn btn-sm btn-outline"
-                    style={{ fontSize: "0.72rem" }}
-                  >
-                    <ExternalLink size={12} /> View
-                  </Link>
-                </div>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </div>
       </div>

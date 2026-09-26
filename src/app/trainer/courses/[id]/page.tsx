@@ -5,7 +5,7 @@ import MediaUploader from "@/components/media/MediaUploader";
 import Link from "next/link";
 import {
   ArrowLeft, Video, FileText, BookOpen, Trash2, Eye,
-  Download, Upload, CheckCircle, Clock, Users, Star,
+  Download, Upload, CheckCircle, Clock, Users, Star, Radio, MessageSquare,
 } from "lucide-react";
 
 interface Resource {
@@ -165,6 +165,12 @@ export default function TrainerCourseManagePage({
           </p>
         </div>
         <div style={{ display: "flex", gap: 10 }}>
+          <Link href={`/trainer/courses/${id}/forum`} className="btn btn-outline">
+            <MessageSquare size={15} /> Forum
+          </Link>
+          <Link href={`/trainer/courses/${id}/live`} className="btn btn-outline" style={{ borderColor: "hsl(0 72% 51%)", color: "hsl(0 72% 51%)" }}>
+            <Radio size={15} /> Live Classroom
+          </Link>
           <Link href={`/trainer/courses/${id}/report`} className="btn btn-outline">
             <Users size={15} /> View Trainee Report
           </Link>

@@ -17,6 +17,7 @@ import {
   MessageSquare,
   Sparkles,
   Eye,
+  Radio,
 } from "lucide-react";
 
 export default function LearnPage({ params }: { params: Promise<{ id: string }> }) {
@@ -319,6 +320,13 @@ export default function LearnPage({ params }: { params: Promise<{ id: string }> 
               style={{ flex: 1, justifyContent: "center", gap: 8 }}
             >
               <MessageSquare size={16} /> Course Discussion Forum
+            </Link>
+            <Link
+              href={`/trainee/courses/${id}/live`}
+              className="btn btn-outline"
+              style={{ flex: 1, justifyContent: "center", gap: 8, borderColor: "hsl(0 72% 51%)", color: "hsl(0 72% 51%)" }}
+            >
+              <Radio size={16} /> Live Classes
             </Link>
           </div>
         </div>
