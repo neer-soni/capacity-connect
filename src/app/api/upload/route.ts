@@ -189,7 +189,20 @@ export async function DELETE(request: Request) {
       }
     }
 
-    // Remove file from disk
+    // Remove file from Supabase Storage if configured
+    try {
+      const { isSupabaseConfigured, getSupabaseAdmin, STORAGE_BUCKET } = await import("@/lib/supabase");
+      if (isSupabaseConfigured()) {
+        const supabase = getSupabaseAdmin();
+        if (supabase) {
+          await supabase.storage.from(STORAGE_BUCKET).remove([storageKey]);
+        }
+      }
+    } catch {
+      // Ignore Supabase storage delete errors
+    }
+
+    // Remove file from local disk if it exists locally
     const { unlink } = await import("fs/promises");
     const subfolders = ["videos", "documents", "images"];
     for (const sf of subfolders) {

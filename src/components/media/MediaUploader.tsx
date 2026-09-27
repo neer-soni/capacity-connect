@@ -80,22 +80,100 @@ export default function MediaUploader({
       return;
     }
 
-    setFiles((prev) => prev.map((f) => f.id === entry.id ? { ...f, status: "uploading", progress: 10 } : f));
-
-    const formData = new FormData();
-    formData.append("file", entry.file);
-    if (courseId) formData.append("courseId", courseId);
-    formData.append("purpose", purpose);
-
-    // Simulate progressive upload progress (XHR would give real progress)
-    const progressInterval = setInterval(() => {
-      setFiles((prev) => prev.map((f) => f.id === entry.id && f.progress < 85
-        ? { ...f, progress: Math.min(85, f.progress + 15) }
-        : f
-      ));
-    }, 400);
+    setFiles((prev) => prev.map((f) => f.id === entry.id ? { ...f, status: "uploading", progress: 5 } : f));
 
     try {
+      // 1. Check if direct cloud upload (Supabase Storage) is available
+      let directUploadConfig: any = null;
+      try {
+        const signRes = await fetch("/api/upload/signed-url", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            fileName: entry.file.name,
+            fileType: entry.file.type,
+            fileSize: entry.file.size,
+            courseId,
+            purpose,
+          }),
+        });
+        if (signRes.ok) {
+          directUploadConfig = await signRes.json();
+        }
+      } catch {
+        // Fall back to standard upload if signed-url check fails
+      }
+
+      // ── DIRECT CLOUD UPLOAD (Bypasses Vercel 4.5MB server limit) ──
+      if (directUploadConfig?.useDirectUpload && directUploadConfig?.signedUrl) {
+        await new Promise<void>((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          xhr.open("PUT", directUploadConfig.signedUrl);
+          xhr.setRequestHeader("Content-Type", entry.file.type || "application/octet-stream");
+
+          xhr.upload.onprogress = (evt) => {
+            if (evt.lengthComputable) {
+              const pct = Math.round((evt.loaded / evt.total) * 90);
+              setFiles((prev) => prev.map((f) => f.id === entry.id ? { ...f, progress: Math.max(5, pct) } : f));
+            }
+          };
+
+          xhr.onload = () => {
+            if (xhr.status >= 200 && xhr.status < 300) {
+              resolve();
+            } else {
+              reject(new Error(`Storage upload failed with status ${xhr.status}`));
+            }
+          };
+
+          xhr.onerror = () => reject(new Error("Network error during direct storage upload."));
+          xhr.send(entry.file);
+        });
+
+        // Record metadata in database
+        setFiles((prev) => prev.map((f) => f.id === entry.id ? { ...f, progress: 95 } : f));
+        const compRes = await fetch("/api/upload/complete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title: entry.file.name,
+            courseId,
+            publicUrl: directUploadConfig.publicUrl,
+            storageKey: directUploadConfig.storageKey,
+            mimeType: entry.file.type,
+            sizeBytes: entry.file.size,
+            purpose,
+          }),
+        });
+
+        if (!compRes.ok) {
+          const compErr = await compRes.json().catch(() => ({}));
+          throw new Error(compErr.error || "Failed to finalize upload record");
+        }
+
+        const compData = await compRes.json();
+        setFiles((prev) => prev.map((f) =>
+          f.id === entry.id
+            ? { ...f, status: "done", progress: 100, url: directUploadConfig.publicUrl, resourceId: compData.resource?.id }
+            : f
+        ));
+        onUploadComplete?.(directUploadConfig.publicUrl, compData.resource?.id);
+        return;
+      }
+
+      // ── LOCAL FALLBACK UPLOAD (For localhost:3000) ──
+      const formData = new FormData();
+      formData.append("file", entry.file);
+      if (courseId) formData.append("courseId", courseId);
+      formData.append("purpose", purpose);
+
+      const progressInterval = setInterval(() => {
+        setFiles((prev) => prev.map((f) => f.id === entry.id && f.progress < 85
+          ? { ...f, progress: Math.min(85, f.progress + 15) }
+          : f
+        ));
+      }, 400);
+
       const response = await fetch("/api/upload", { method: "POST", body: formData });
       clearInterval(progressInterval);
 
@@ -106,7 +184,7 @@ export default function MediaUploader({
           errMsg = err.error || errMsg;
         } catch {
           if (response.status === 413) {
-            errMsg = "File too large for server limit.";
+            errMsg = "File exceeds Vercel 4.5MB serverless limit. Configure Supabase Storage to enable large uploads.";
           }
         }
         throw new Error(errMsg);
@@ -120,7 +198,6 @@ export default function MediaUploader({
       ));
       onUploadComplete?.(data.url, data.resource?.id);
     } catch (err: any) {
-      clearInterval(progressInterval);
       setFiles((prev) => prev.map((f) =>
         f.id === entry.id ? { ...f, status: "error", progress: 0, error: err.message } : f
       ));
