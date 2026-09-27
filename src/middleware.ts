@@ -31,14 +31,16 @@ export default auth((req) => {
     return NextResponse.next();
   }
 
-  // Allow static assets and Next.js internals
+  // Allow static assets, Next.js internals, and direct upload streaming
   if (
     pathname.startsWith("/_next") ||
     pathname.startsWith("/favicon") ||
+    pathname.startsWith("/api/upload") ||
     pathname.includes(".")
   ) {
     return NextResponse.next();
   }
+
 
   // No session → return 401 for APIs or redirect to login for pages
   if (!session?.user) {

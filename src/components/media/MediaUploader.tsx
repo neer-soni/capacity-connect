@@ -73,6 +73,13 @@ export default function MediaUploader({
   }, [courseId, purpose, uid, maxFiles]); // eslint-disable-line
 
   const uploadFile = async (entry: UploadedFile) => {
+    if (purpose === "resource" && !courseId) {
+      setFiles((prev) => prev.map((f) =>
+        f.id === entry.id ? { ...f, status: "error", progress: 0, error: "Please select a course before uploading." } : f
+      ));
+      return;
+    }
+
     setFiles((prev) => prev.map((f) => f.id === entry.id ? { ...f, status: "uploading", progress: 10 } : f));
 
     const formData = new FormData();
@@ -93,8 +100,16 @@ export default function MediaUploader({
       clearInterval(progressInterval);
 
       if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.error || "Upload failed");
+        let errMsg = `Upload failed (${response.status})`;
+        try {
+          const err = await response.json();
+          errMsg = err.error || errMsg;
+        } catch {
+          if (response.status === 413) {
+            errMsg = "File too large for server limit.";
+          }
+        }
+        throw new Error(errMsg);
       }
 
       const data = await response.json();

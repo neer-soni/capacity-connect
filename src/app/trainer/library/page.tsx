@@ -61,7 +61,11 @@ export default function TrainerLibraryPage() {
       const res = await fetch("/api/trainer/courses");
       if (res.ok) {
         const data = await res.json();
-        setCourses(Array.isArray(data) ? data.map((c: any) => ({ id: c.id, title: c.title })) : []);
+        const list = Array.isArray(data) ? data.map((c: any) => ({ id: c.id, title: c.title })) : [];
+        setCourses(list);
+        if (list.length > 0) {
+          setSelectedCourseId((prev) => prev || list[0].id);
+        }
       }
     } catch {}
   }
@@ -141,29 +145,40 @@ export default function TrainerLibraryPage() {
           {/* Course selector */}
           <div style={{ marginBottom: 14 }}>
             <label style={{ display: "block", fontSize: "0.82rem", fontWeight: 600, marginBottom: 6, color: "hsl(215 18% 38%)" }}>
-              Attach to Course (optional)
+              Attach to Course <span style={{ color: "hsl(0 72% 51%)" }}>*</span>
             </label>
-            <select
-              className="input"
-              value={selectedCourseId}
-              onChange={(e) => setSelectedCourseId(e.target.value)}
-              style={{ maxWidth: 360 }}
-            >
-              <option value="">— Select a course —</option>
-              {courses.map((c) => (
-                <option key={c.id} value={c.id}>{c.title}</option>
-              ))}
-            </select>
+            {courses.length === 0 ? (
+              <div style={{ padding: "12px 16px", borderRadius: 8, background: "hsl(38 92% 95%)", border: "1px solid hsl(38 92% 80%)", color: "hsl(38 92% 25%)", fontSize: "0.85rem", marginBottom: 12 }}>
+                ⚠️ You don&apos;t have any courses yet. Please create a course first before uploading media resources.
+                <div style={{ marginTop: 8 }}>
+                  <a href="/trainer/courses/new" className="btn btn-primary btn-sm">Create a Course</a>
+                </div>
+              </div>
+            ) : (
+              <select
+                className="input"
+                value={selectedCourseId}
+                onChange={(e) => setSelectedCourseId(e.target.value)}
+                style={{ maxWidth: 360 }}
+              >
+                <option value="">— Select a course —</option>
+                {courses.map((c) => (
+                  <option key={c.id} value={c.id}>{c.title}</option>
+                ))}
+              </select>
+            )}
           </div>
 
-          <MediaUploader
-            courseId={selectedCourseId || undefined}
-            purpose="resource"
-            maxFiles={20}
-            onUploadComplete={() => {
-              fetchResources();
-            }}
-          />
+          {courses.length > 0 && (
+            <MediaUploader
+              courseId={selectedCourseId || undefined}
+              purpose="resource"
+              maxFiles={20}
+              onUploadComplete={() => {
+                fetchResources();
+              }}
+            />
+          )}
         </div>
       )}
 
